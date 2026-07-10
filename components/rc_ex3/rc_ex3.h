@@ -51,6 +51,7 @@ class RcEx3Climate : public climate::Climate, public uart::UARTDevice, public Po
   bool validate_checksum_and_extract_payload_(const char *raw, size_t len, char *payload, size_t payload_size, size_t &payload_len);
   void parse_status_response(const char *buf, size_t len);
   void parse_operational_data(const char *buf, size_t len);
+  void apply_wire_fan_mode_(char wire_value);
 
   uint8_t calc_checksum(const char *data, size_t len);
   size_t  hex_to_bytes(const char *hex, uint8_t *out, size_t max_out);
@@ -71,7 +72,21 @@ class RcEx3Climate : public climate::Climate, public uart::UARTDevice, public Po
   bool op_data_requested_{false};  // set in update(); cleared when status response chains op_data
   bool rx_overflowed_{false};
 
-  std::string requested_custom_fan_mode_{};
+  // Fields awaiting confirmation after an optimistic HA update. The RC-EX3
+  // can report its previous state briefly after accepting a command.
+  enum PendingField : uint8_t {
+    PENDING_NONE        = 0,
+    PENDING_MODE        = 1 << 0,
+    PENDING_TEMPERATURE = 1 << 1,
+    PENDING_FAN         = 1 << 2,
+  };
+
+  static const uint32_t COMMAND_SETTLE_MS = 750;  // measured stale reply arrives in ~30-60 ms
+  uint8_t pending_fields_{PENDING_NONE};
+  uint32_t last_command_ms_{0};
+  climate::ClimateMode pending_mode_{climate::CLIMATE_MODE_OFF};
+  float pending_temperature_{NAN};
+  uint8_t pending_fan_wire_{0xFF};
 
   sensor::Sensor *indoor_temperature_sensor_    {nullptr};
   sensor::Sensor *outdoor_temperature_sensor_   {nullptr};

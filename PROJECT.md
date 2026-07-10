@@ -39,7 +39,8 @@ The checksum is the 8-bit sum of all payload bytes, printed as two uppercase hex
 
 ### Control Commands
 
-All control uses a single combined packet (mirrors the upstream `setClimate()` function):
+Each control action uses one packet. Fields absent from the HA call are sent as
+`FF` so a stale local value cannot overwrite a newer wall-panel setting:
 
 ```
 RSSL13FF0001[pwr]02[mode]03[fan]04FF0503[temp]06FF0FFF43FF
@@ -124,9 +125,9 @@ Each polling cycle (default 30 s) does two serial transactions:
 
 This avoids sending both requests simultaneously and overlapping their responses. The operational data is always requested (not just when sensors are configured), so `current_temperature` in the HA climate card is always populated.
 
-### Combined Control Packet
+### Partial Control Packet
 
-When Home Assistant sends a control action, all four parameters (power, mode, fan, temperature) are packed into a single `RSSL13...` packet rather than sending individual field-update packets. This matches the upstream `setClimate()` approach and ensures the unit always receives a coherent state.
+Home Assistant changes are sent in one `RSSL12...` or `RSSL13...` packet. Only fields present in the control call carry values; the others use the protocol's `FF` (unchanged) marker. ESPHome publishes the requested values immediately, then reconciles them with a later status response.
 
 ### Fan Speed Mapping
 

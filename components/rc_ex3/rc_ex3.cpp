@@ -36,6 +36,12 @@ void RcEx3Climate::setup() {
 }
 
 void RcEx3Climate::update() {
+  // Do not interleave a scheduled query with a command response.
+  if (pending_fields_ != PENDING_NONE && (millis() - last_command_ms_) < COMMAND_SETTLE_MS) {
+    ESP_LOGD(TAG, "status poll skipped while command is settling");
+    return;
+  }
+
   send_status_request();
 
   op_data_requested_ = false;
@@ -91,39 +97,75 @@ void RcEx3Climate::loop() {
 // ─── HA control call ─────────────────────────────────────────────────────────
 
 void RcEx3Climate::control(const climate::ClimateCall &call) {
-  if (call.get_mode().has_value())
+  // The RC-EX3 protocol uses FF for fields that should remain unchanged.  Only
+  // send values present in this ClimateCall so a stale local cache cannot
+  // overwrite a newer setting made at the wall controller.
+  uint8_t power = 0xFF;
+  uint8_t mode = 0xFF;
+  uint8_t fan = 0xFF;
+  uint8_t temp_wire = 0xFF;
+  bool has_change = false;
+
+  if (call.get_mode().has_value()) {
     this->mode = *call.get_mode();
-  if (call.get_target_temperature().has_value())
-    this->target_temperature = *call.get_target_temperature();
-  if (call.get_fan_mode().has_value())
-    this->fan_mode = *call.get_fan_mode();
-
-  uint8_t power    = (this->mode == climate::CLIMATE_MODE_OFF) ? 0 : 1;
-  uint8_t mode     = climate_mode_to_wire(this->mode);
-  uint8_t fan = 0x07;
-  auto custom_fan_mode = call.get_custom_fan_mode();
-  if (!custom_fan_mode.empty())
-    this->requested_custom_fan_mode_ = custom_fan_mode.c_str();
-
-  if (!this->requested_custom_fan_mode_.empty()) {
-    if (this->requested_custom_fan_mode_ == "1") fan = 0x00;
-    else if (this->requested_custom_fan_mode_ == "2") fan = 0x01;
-    else if (this->requested_custom_fan_mode_ == "3") fan = 0x02;
-    else if (this->requested_custom_fan_mode_ == "4") fan = 0x06;
-    this->fan_mode = climate::CLIMATE_FAN_ON;
-  } else {
-    this->fan_mode = climate::CLIMATE_FAN_AUTO;
+    // Selecting a mode also turns the unit on; OFF only changes power.
+    power = (this->mode == climate::CLIMATE_MODE_OFF) ? 0 : 1;
+    if (this->mode != climate::CLIMATE_MODE_OFF)
+      mode = climate_mode_to_wire(this->mode);
+    pending_mode_ = this->mode;
+    pending_fields_ |= PENDING_MODE;
+    has_change = true;
   }
-  uint8_t temp_wire = static_cast<uint8_t>(this->target_temperature * 2.0f);
+
+  if (call.get_target_temperature().has_value()) {
+    this->target_temperature = *call.get_target_temperature();
+    temp_wire = static_cast<uint8_t>(this->target_temperature * 2.0f);
+    pending_temperature_ = this->target_temperature;
+    pending_fields_ |= PENDING_TEMPERATURE;
+    has_change = true;
+  }
+
+  if (call.get_fan_mode().has_value()) {
+    this->set_fan_mode_(*call.get_fan_mode());
+    fan = fan_mode_to_wire(*call.get_fan_mode());
+    pending_fan_wire_ = fan;
+    pending_fields_ |= PENDING_FAN;
+    has_change = true;
+  }
+
+  auto custom_fan_mode = call.get_custom_fan_mode();
+  if (!custom_fan_mode.empty()) {
+    if (custom_fan_mode == "1") fan = 0x00;
+    else if (custom_fan_mode == "2") fan = 0x01;
+    else if (custom_fan_mode == "3") fan = 0x02;
+    else if (custom_fan_mode == "4") fan = 0x06;
+    this->set_custom_fan_mode_(custom_fan_mode);
+    pending_fan_wire_ = fan;
+    pending_fields_ |= PENDING_FAN;
+    has_change = true;
+  }
+
+  if (!has_change)
+    return;
 
   char buf[64];
-  size_t len = snprintf(buf, sizeof(buf),
-    "RSSL13FF0001%.2x02%.2x03%.2x04FF0503%.2x06FF0FFF43FF",
-    power, mode, fan, temp_wire);
+  size_t len;
+  // Temperature uses the longer RSSL13 packet; other changes use RSSL12.
+  if (call.get_target_temperature().has_value()) {
+    len = snprintf(buf, sizeof(buf),
+      "RSSL13FF0001%.2x02%.2x03%.2x04FF0503%.2x06FF0FFF43FF",
+      power, mode, fan, temp_wire);
+  } else {
+    len = snprintf(buf, sizeof(buf),
+      "RSSL12FF0001%.2x02%.2x03%.2x04FF05FF06FF0FFF43FF",
+      power, mode, fan);
+  }
 
-  ESP_LOGI(TAG, "tx → power=%d mode=%d fan=0x%02x temp_wire=%d (%.1f°C)",
-           power, mode, fan, temp_wire, this->target_temperature);
+  ESP_LOGI(TAG, "tx → partial power=0x%02x mode=0x%02x fan=0x%02x temp=0x%02x",
+           power, mode, fan, temp_wire);
 
+  // Publish optimistically now; a later status frame confirms or corrects it.
+  last_command_ms_ = millis();
   send_command(buf, len);
   this->publish_state();
 }
@@ -158,12 +200,19 @@ void RcEx3Climate::parse_packet(const char *raw, size_t len) {
 
   ESP_LOGV(TAG, "rx: %s", buf);
 
-  // RSSL1x → climate status; queue op_data only if this update() cycle requested it
-  if (buf[0] == 'R' && buf[1] == 'S' && buf[2] == 'S' && buf[3] == 'L' && buf[4] == '1') {
-    parse_status_response(buf, buflen);
-    if (op_data_requested_) {
-      op_data_requested_ = false;
-      op_data_pending_   = true;
+  // RSSL1x is authoritative climate state; RSSL0x is a command ACK and
+  // contains no state to publish.
+  if (buf[0] == 'R' && buf[1] == 'S' && buf[2] == 'S' && buf[3] == 'L') {
+    if (buf[4] == '1') {
+      parse_status_response(buf, buflen);
+      if (op_data_requested_) {
+        op_data_requested_ = false;
+        op_data_pending_   = true;
+      }
+    } else if (buf[4] == '0') {
+      ESP_LOGD(TAG, "rx ← command ACK");
+    } else {
+      ESP_LOGD(TAG, "rx unhandled RSSL: %s", buf);
     }
     return;
   }
@@ -236,24 +285,65 @@ void RcEx3Climate::parse_status_response(const char *buf, size_t len) {
 
   bool is_on = (pwr_c == '1');
   climate::ClimateMode new_mode = is_on ? wire_to_climate_mode(mode_c - '0') : climate::CLIMATE_MODE_OFF;
+  uint8_t new_fan_wire = static_cast<uint8_t>(fan_c - '0');
 
   ESP_LOGD(TAG, "status: power=%c mode=%c fan=%c temp=%.1f°C", pwr_c, mode_c, fan_c, temp_c);
 
-  this->mode               = new_mode;
-  this->fan_mode = wire_to_fan_mode(fan_c);
-  switch (fan_c) {
-    case '0': this->requested_custom_fan_mode_ = "1"; break;
-    case '1': this->requested_custom_fan_mode_ = "2"; break;
-    case '2': this->requested_custom_fan_mode_ = "3"; break;
-    case '6': this->requested_custom_fan_mode_ = "4"; break;
-    default: this->requested_custom_fan_mode_.clear(); break;
+  const bool settling = pending_fields_ != PENDING_NONE &&
+                        (millis() - last_command_ms_) < COMMAND_SETTLE_MS;
+
+  // A matching field confirms the command. During settling, keep the
+  // optimistic value when the controller briefly reports its previous state.
+  if ((pending_fields_ & PENDING_MODE) == 0 || new_mode == pending_mode_) {
+    this->mode = new_mode;
+    if (new_mode == pending_mode_)
+      pending_fields_ &= ~PENDING_MODE;
+  } else if (settling) {
+    ESP_LOGD(TAG, "ignoring stale mode while command settles");
   }
-  this->target_temperature = temp_c;
+
+  if ((pending_fields_ & PENDING_FAN) == 0 || new_fan_wire == pending_fan_wire_) {
+    apply_wire_fan_mode_(fan_c);
+    if (new_fan_wire == pending_fan_wire_)
+      pending_fields_ &= ~PENDING_FAN;
+  } else if (settling) {
+    ESP_LOGD(TAG, "ignoring stale fan while command settles");
+  }
+
+  if ((pending_fields_ & PENDING_TEMPERATURE) == 0 ||
+      std::fabs(temp_c - pending_temperature_) < 0.01f) {
+    this->target_temperature = temp_c;
+    if (std::fabs(temp_c - pending_temperature_) < 0.01f)
+      pending_fields_ &= ~PENDING_TEMPERATURE;
+  } else if (settling) {
+    ESP_LOGD(TAG, "ignoring stale temperature while command settles");
+  }
+
+  // Once the short stale-response window has expired, the controller is
+  // authoritative even if it rejected or normalised the requested value.
+  if (!settling && pending_fields_ != PENDING_NONE) {
+    this->mode = new_mode;
+    apply_wire_fan_mode_(fan_c);
+    this->target_temperature = temp_c;
+    pending_fields_ = PENDING_NONE;
+  }
+
   if (std::isnan(this->current_temperature) && indoor_temperature_sensor_ &&
       !std::isnan(indoor_temperature_sensor_->state)) {
     this->current_temperature = indoor_temperature_sensor_->state;
   }
   this->publish_state();
+}
+
+void RcEx3Climate::apply_wire_fan_mode_(char wire_value) {
+  // ESPHome stores numbered speeds as custom modes, separate from AUTO.
+  switch (wire_value) {
+    case '0': this->set_custom_fan_mode_("1"); break;
+    case '1': this->set_custom_fan_mode_("2"); break;
+    case '2': this->set_custom_fan_mode_("3"); break;
+    case '6': this->set_custom_fan_mode_("4"); break;
+    default: this->set_fan_mode_(climate::CLIMATE_FAN_AUTO); break;
+  }
 }
 
 // ─── Operational data parser ──────────────────────────────────────────────────
