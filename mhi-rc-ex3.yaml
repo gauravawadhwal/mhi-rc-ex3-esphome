@@ -55,7 +55,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/hump-coder/mhi-rc-ex3-esphome.git
-      ref: 1abf863df5117633f12367011f2cb5a3886bad85
+      ref: 42202f35d22884d225c6558aec50df9222326830
     refresh: 0s
     components: [rc_ex3]
 
@@ -76,6 +76,9 @@ climate:
     uart_id: rc_ex3_uart
     update_interval: 5min   # status poll cadence
     op_data_interval: 5    # 0 = disable diagnostic sensor requests (prevents "communicating with PC" mode)
+    fan_speed_count: 4     # number of manual speeds advertised alongside Auto (1–4)
+    use_standard_fan_modes: false  # true = expose speeds 1–3 as Low/Medium/High
+    auto_mode: true        # advertise automatic heat/cool changeover
 
     # ── Diagnostic sensors (all optional – remove any you don't need) ─────────
     indoor_temperature:
