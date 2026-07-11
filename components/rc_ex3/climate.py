@@ -21,6 +21,9 @@ RcEx3Climate = rc_ex3_ns.class_(
 )
 
 CONF_OP_DATA_INTERVAL       = "op_data_interval"
+CONF_FAN_SPEED_COUNT        = "fan_speed_count"
+CONF_USE_STANDARD_FAN_MODES = "use_standard_fan_modes"
+CONF_AUTO_MODE              = "auto_mode"
 CONF_INDOOR_TEMPERATURE     = "indoor_temperature"
 CONF_OUTDOOR_TEMPERATURE    = "outdoor_temperature"
 CONF_RETURN_AIR_TEMPERATURE = "return_air_temperature"
@@ -32,6 +35,9 @@ CONFIG_SCHEMA = (
     .extend(
         {
             cv.Optional(CONF_OP_DATA_INTERVAL, default=0): cv.uint32_t,
+            cv.Optional(CONF_FAN_SPEED_COUNT, default=4): cv.int_range(min=1, max=4),
+            cv.Optional(CONF_USE_STANDARD_FAN_MODES, default=False): cv.boolean,
+            cv.Optional(CONF_AUTO_MODE, default=True): cv.boolean,
             cv.Optional(CONF_INDOOR_TEMPERATURE): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
                 accuracy_decimals=1,
@@ -74,6 +80,9 @@ async def to_code(config):
     await uart.register_uart_device(var, config)
 
     cg.add(var.set_op_data_interval(config[CONF_OP_DATA_INTERVAL]))
+    cg.add(var.set_fan_speed_count(config[CONF_FAN_SPEED_COUNT]))
+    cg.add(var.set_use_standard_fan_modes(config[CONF_USE_STANDARD_FAN_MODES]))
+    cg.add(var.set_auto_mode(config[CONF_AUTO_MODE]))
 
     if CONF_INDOOR_TEMPERATURE in config:
         sens = await sensor.new_sensor(config[CONF_INDOOR_TEMPERATURE])

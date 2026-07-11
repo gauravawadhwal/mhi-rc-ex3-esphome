@@ -133,6 +133,15 @@ Home Assistant changes are sent in one `RSSL12...` or `RSSL13...` packet. Only f
 
 The protocol has 4 discrete speeds plus auto. ESPHome's built-in `ClimateFanMode` only covers Auto/Low/Medium/High, so speeds 1–4 are exposed as ESPHome *custom fan modes* (`"1"`–`"4"`). Auto remains a standard built-in mode.
 
+`fan_speed_count` limits the advertised manual modes to the number supported by
+the indoor unit (1–4, default 4). It does not remove Auto.
+
+`use_standard_fan_modes` maps protocol speeds 1–3 to ESPHome's standard
+Low/Medium/High modes. The default numbered modes preserve compatibility.
+
+`auto_mode` controls whether automatic heat/cool changeover is advertised
+(default true). It is independent of Auto fan speed.
+
 | HA fan mode       | Wire value | Protocol speed |
 |-------------------|-----------|----------------|
 | AUTO (built-in)   | 0x07      | Auto           |

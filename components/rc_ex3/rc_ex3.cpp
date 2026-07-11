@@ -13,13 +13,19 @@ climate::ClimateTraits RcEx3Climate::traits() {
   traits.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE);
   traits.set_supported_modes({
     climate::CLIMATE_MODE_OFF,
-    climate::CLIMATE_MODE_HEAT_COOL,
     climate::CLIMATE_MODE_COOL,
     climate::CLIMATE_MODE_HEAT,
     climate::CLIMATE_MODE_DRY,
     climate::CLIMATE_MODE_FAN_ONLY,
   });
+  if (auto_mode_)
+    traits.add_supported_mode(climate::CLIMATE_MODE_HEAT_COOL);
   traits.set_supported_fan_modes({climate::CLIMATE_FAN_AUTO});
+  if (use_standard_fan_modes_) {
+    if (fan_speed_count_ >= 1) traits.add_supported_fan_mode(climate::CLIMATE_FAN_LOW);
+    if (fan_speed_count_ >= 2) traits.add_supported_fan_mode(climate::CLIMATE_FAN_MEDIUM);
+    if (fan_speed_count_ >= 3) traits.add_supported_fan_mode(climate::CLIMATE_FAN_HIGH);
+  }
   traits.set_visual_min_temperature(16.0f);
   traits.set_visual_max_temperature(30.0f);
   traits.set_visual_temperature_step(0.5f);
@@ -29,7 +35,20 @@ climate::ClimateTraits RcEx3Climate::traits() {
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 void RcEx3Climate::setup() {
-  this->set_supported_custom_fan_modes({"1", "2", "3", "4"});
+  // Only advertise the manual speeds configured for this indoor unit. Auto is
+  // advertised separately by traits() and remains available for every count.
+  if (use_standard_fan_modes_) {
+    // Home Assistant has no standard fourth speed, so keep it custom when used.
+    if (fan_speed_count_ == 4)
+      this->set_supported_custom_fan_modes({"4"});
+  } else {
+    switch (fan_speed_count_) {
+      case 1: this->set_supported_custom_fan_modes({"1"}); break;
+      case 2: this->set_supported_custom_fan_modes({"1", "2"}); break;
+      case 3: this->set_supported_custom_fan_modes({"1", "2", "3"}); break;
+      default: this->set_supported_custom_fan_modes({"1", "2", "3", "4"}); break;
+    }
+  }
   this->mode                = climate::CLIMATE_MODE_OFF;
   this->target_temperature  = 22.0f;
   this->current_temperature = NAN;
@@ -107,14 +126,19 @@ void RcEx3Climate::control(const climate::ClimateCall &call) {
   bool has_change = false;
 
   if (call.get_mode().has_value()) {
-    this->mode = *call.get_mode();
-    // Selecting a mode also turns the unit on; OFF only changes power.
-    power = (this->mode == climate::CLIMATE_MODE_OFF) ? 0 : 1;
-    if (this->mode != climate::CLIMATE_MODE_OFF)
-      mode = climate_mode_to_wire(this->mode);
-    pending_mode_ = this->mode;
-    pending_fields_ |= PENDING_MODE;
-    has_change = true;
+    auto requested_mode = *call.get_mode();
+    if (requested_mode == climate::CLIMATE_MODE_HEAT_COOL && !auto_mode_) {
+      ESP_LOGW(TAG, "auto operation mode is disabled");
+    } else {
+      this->mode = requested_mode;
+      // Selecting a mode also turns the unit on; OFF only changes power.
+      power = (this->mode == climate::CLIMATE_MODE_OFF) ? 0 : 1;
+      if (this->mode != climate::CLIMATE_MODE_OFF)
+        mode = climate_mode_to_wire(this->mode);
+      pending_mode_ = this->mode;
+      pending_fields_ |= PENDING_MODE;
+      has_change = true;
+    }
   }
 
   if (call.get_target_temperature().has_value()) {
@@ -126,23 +150,34 @@ void RcEx3Climate::control(const climate::ClimateCall &call) {
   }
 
   if (call.get_fan_mode().has_value()) {
-    this->set_fan_mode_(*call.get_fan_mode());
-    fan = fan_mode_to_wire(*call.get_fan_mode());
-    pending_fan_wire_ = fan;
-    pending_fields_ |= PENDING_FAN;
-    has_change = true;
+    auto requested_fan_mode = *call.get_fan_mode();
+    fan = fan_mode_to_wire(requested_fan_mode);
+    if (fan == 0x07 || (use_standard_fan_modes_ && fan != 0xFF)) {
+      this->set_fan_mode_(requested_fan_mode);
+      pending_fan_wire_ = fan;
+      pending_fields_ |= PENDING_FAN;
+      has_change = true;
+    } else {
+      ESP_LOGW(TAG, "unsupported standard fan mode requested");
+    }
   }
 
   auto custom_fan_mode = call.get_custom_fan_mode();
   if (!custom_fan_mode.empty()) {
-    if (custom_fan_mode == "1") fan = 0x00;
-    else if (custom_fan_mode == "2") fan = 0x01;
-    else if (custom_fan_mode == "3") fan = 0x02;
-    else if (custom_fan_mode == "4") fan = 0x06;
-    this->set_custom_fan_mode_(custom_fan_mode);
-    pending_fan_wire_ = fan;
-    pending_fields_ |= PENDING_FAN;
-    has_change = true;
+    uint8_t speed = custom_fan_mode.size() == 1 ? custom_fan_mode[0] - '0' : 0;
+    bool supported = use_standard_fan_modes_ ? speed == 4 : speed >= 1;
+    if (supported && speed <= fan_speed_count_) {
+      if (speed == 1) fan = 0x00;
+      else if (speed == 2) fan = 0x01;
+      else if (speed == 3) fan = 0x02;
+      else if (speed == 4) fan = 0x06;
+      this->set_custom_fan_mode_(custom_fan_mode);
+      pending_fan_wire_ = fan;
+      pending_fields_ |= PENDING_FAN;
+      has_change = true;
+    } else {
+      ESP_LOGW(TAG, "unsupported fan speed requested: %s", custom_fan_mode.c_str());
+    }
   }
 
   if (!has_change)
@@ -336,7 +371,23 @@ void RcEx3Climate::parse_status_response(const char *buf, size_t len) {
 }
 
 void RcEx3Climate::apply_wire_fan_mode_(char wire_value) {
-  // ESPHome stores numbered speeds as custom modes, separate from AUTO.
+  if (use_standard_fan_modes_) {
+    switch (wire_value) {
+      case '0': this->set_fan_mode_(climate::CLIMATE_FAN_LOW); break;
+      case '1': this->set_fan_mode_(climate::CLIMATE_FAN_MEDIUM); break;
+      case '2': this->set_fan_mode_(climate::CLIMATE_FAN_HIGH); break;
+      case '6':
+        if (fan_speed_count_ == 4)
+          this->set_custom_fan_mode_("4");
+        else
+          this->set_fan_mode_(climate::CLIMATE_FAN_HIGH);
+        break;
+      default: this->set_fan_mode_(climate::CLIMATE_FAN_AUTO); break;
+    }
+    return;
+  }
+
+  // Numbered speeds are custom modes, separate from Auto.
   switch (wire_value) {
     case '0': this->set_custom_fan_mode_("1"); break;
     case '1': this->set_custom_fan_mode_("2"); break;
@@ -448,8 +499,14 @@ climate::ClimateMode RcEx3Climate::wire_to_climate_mode(uint8_t v) {
   }
 }
 
-uint8_t RcEx3Climate::fan_mode_to_wire(climate::ClimateFanMode) {
-  return 0x07;
+uint8_t RcEx3Climate::fan_mode_to_wire(climate::ClimateFanMode mode) {
+  switch (mode) {
+    case climate::CLIMATE_FAN_AUTO:   return 0x07;
+    case climate::CLIMATE_FAN_LOW:    return 0x00;
+    case climate::CLIMATE_FAN_MEDIUM: return 0x01;
+    case climate::CLIMATE_FAN_HIGH:   return 0x02;
+    default:                          return 0xFF;
+  }
 }
 
 climate::ClimateFanMode RcEx3Climate::wire_to_fan_mode(char c) {

@@ -35,6 +35,9 @@ class RcEx3Climate : public climate::Climate, public uart::UARTDevice, public Po
   float get_setup_priority() const override { return setup_priority::DATA; }
 
   void set_op_data_interval(uint32_t minutes) { op_data_interval_minutes_ = minutes; }
+  void set_fan_speed_count(uint8_t count) { fan_speed_count_ = count; }
+  void set_use_standard_fan_modes(bool enabled) { use_standard_fan_modes_ = enabled; }
+  void set_auto_mode(bool enabled) { auto_mode_ = enabled; }
 
   void set_indoor_temperature_sensor(sensor::Sensor *s)    { indoor_temperature_sensor_    = s; }
   void set_outdoor_temperature_sensor(sensor::Sensor *s)   { outdoor_temperature_sensor_   = s; }
@@ -67,6 +70,9 @@ class RcEx3Climate : public climate::Climate, public uart::UARTDevice, public Po
   RxState rx_state_{RxState::WAITING_FOR_SOF};
 
   uint32_t op_data_interval_minutes_{0};
+  uint8_t fan_speed_count_{4};
+  bool use_standard_fan_modes_{false};
+  bool auto_mode_{true};
   uint32_t last_op_data_ms_{0};
   bool op_data_pending_{false};
   bool op_data_requested_{false};  // set in update(); cleared when status response chains op_data

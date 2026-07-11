@@ -179,7 +179,18 @@ uart:
 climate:
   - platform: rc_ex3
     update_interval: 5min  # Status poll period; reduce if you need faster updates
+    fan_speed_count: 4    # Manual speeds to expose alongside Auto (1–4, default 4)
+    use_standard_fan_modes: false  # Expose 1–3 as Low/Medium/High (default false)
+    auto_mode: true       # Advertise automatic heat/cool changeover (default true)
 ```
+
+Set `fan_speed_count` to match the manual speeds offered by the indoor unit.
+For example, use `3` for a Low/Medium/High unit. Auto remains available.
+Set `use_standard_fan_modes: true` to expose speeds 1–3 as ESPHome's standard
+Low/Medium/High modes instead of custom numeric modes. This also lets bridges
+such as HomeKit identify them as ordered fan speeds.
+Set `auto_mode: false` when the installation does not offer automatic
+heat/cool changeover. This does not affect Auto fan speed.
 
 If you're using a different ESP32 board and want to reassign pins, change `rx_pin` / `tx_pin` here. The baud rate and parity must stay at 38400 / EVEN — this is fixed by the RC-EX3 panel.
 
