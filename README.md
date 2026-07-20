@@ -122,29 +122,29 @@ uart:
 
 Overview of the RC-EX3 panel and ESP module placement:
 
-[<img src="https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/rc3-overview.png" width="60%"/>](https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/rc3-overview.png)
+[<img src="images/rc3-overview.png" width="60%"/>](images/rc3-overview.png)
 
 Buck converter — solder ground and positive leads to the regulator:
 
-[<img src="https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/buck.png" width="60%"/>](https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/buck.png)
+[<img src="images/buck.png" width="60%"/>](images/buck.png)
 
 Regulator placement inside the enclosure (ESP module sits flat against the PCB once insulated):
 
-[<img src="https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/rc3-regulator-placement.png" width="60%"/>](https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/rc3-regulator-placement.png)
+[<img src="images/rc3-regulator-placement.png" width="60%"/>](images/rc3-regulator-placement.png)
 
 TTL UART connections — jumper pins pressed into the four through-hole vias:
 
-[<img src="https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/rc3-ttl-uart.png" width="60%"/>](https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/rc3-ttl-uart.png)
+[<img src="images/rc3-ttl-uart.png" width="60%"/>](images/rc3-ttl-uart.png)
 
 Regulator power connections:
 
-[<img src="https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/rc3-regulator-power.png" width="60%"/>](https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/rc3-regulator-power.png)
+[<img src="images/rc3-regulator-power.png" width="60%"/>](images/rc3-regulator-power.png)
 
 ### Capacitor
 
 The ESP32 can draw current spikes that the panel's power rail can't handle cleanly. Add a **470 µF / 10 V capacitor** across GND and the 3.3 V rail (before or after the buck converter):
 
-[<img src="https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/capacitor.jpg" width="60%"/>](https://raw.githubusercontent.com/hump-coder/mhi-rc-ex3-esp32/main/images/capacitor.jpg)
+[<img src="images/capacitor.jpg" width="60%"/>](images/capacitor.jpg)
 
 ---
 
