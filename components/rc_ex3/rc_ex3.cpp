@@ -115,6 +115,27 @@ void RcEx3Climate::loop() {
 
 // ─── HA control call ─────────────────────────────────────────────────────────
 
+void RcEx3Climate::set_power(bool on) {
+  char buf[64];
+  const size_t len = snprintf(buf, sizeof(buf),
+    "RSSL12FF0001%02x02FF03FF04FF05FF06FF0FFF43FF", on ? 1 : 0);
+
+  pending_power_ = on;
+  // A later power request supersedes the power part of an earlier mode call.
+  // Let the next controller status report the actual retained operating mode.
+  pending_fields_ &= ~PENDING_MODE;
+  pending_fields_ |= PENDING_POWER;
+  last_command_ms_ = millis();
+  if (!on)
+    this->mode = climate::CLIMATE_MODE_OFF;
+  else if (display_operating_mode_ != climate::CLIMATE_MODE_OFF)
+    this->mode = display_operating_mode_;
+
+  ESP_LOGI(TAG, "tx → power-only=%s (all settings unchanged)", on ? "on" : "off");
+  send_command(buf, len);
+  this->publish_state();
+}
+
 void RcEx3Climate::control(const climate::ClimateCall &call) {
   // The RC-EX3 protocol uses FF for fields that should remain unchanged.  Only
   // send values present in this ClimateCall so a stale local cache cannot
@@ -135,6 +156,9 @@ void RcEx3Climate::control(const climate::ClimateCall &call) {
       power = (this->mode == climate::CLIMATE_MODE_OFF) ? 0 : 1;
       if (this->mode != climate::CLIMATE_MODE_OFF)
         mode = climate_mode_to_wire(this->mode);
+      if (this->mode != climate::CLIMATE_MODE_OFF)
+        display_operating_mode_ = this->mode;
+      pending_fields_ &= ~PENDING_POWER;
       pending_mode_ = this->mode;
       pending_fields_ |= PENDING_MODE;
       has_change = true;
@@ -314,6 +338,11 @@ void RcEx3Climate::parse_status_response(const char *buf, size_t len) {
   char mode_c = buf[17];
   char fan_c  = buf[21];
 
+  if ((pwr_c != '0' && pwr_c != '1') || mode_c < '0' || mode_c > '4') {
+    ESP_LOGW(TAG, "status has invalid power or operating mode");
+    return;
+  }
+
   char tmp[3] = {buf[30], buf[31], '\0'};
   unsigned int raw_temp = static_cast<unsigned int>(strtol(tmp, nullptr, 16));
   float temp_c = raw_temp * 0.5f;
@@ -327,9 +356,22 @@ void RcEx3Climate::parse_status_response(const char *buf, size_t len) {
   const bool settling = pending_fields_ != PENDING_NONE &&
                         (millis() - last_command_ms_) < COMMAND_SETTLE_MS;
 
+  // The controller reports its operating mode even while powered off. Keep
+  // it for display, independently of the public climate mode (which is OFF).
+  // Do not replace a just-requested explicit mode with its stale reply.
+  if ((pending_fields_ & PENDING_MODE) == 0 || !settling || new_mode == pending_mode_)
+    display_operating_mode_ = wire_to_climate_mode(mode_c - '0');
+
   // A matching field confirms the command. During settling, keep the
   // optimistic value when the controller briefly reports its previous state.
-  if ((pending_fields_ & PENDING_MODE) == 0 || new_mode == pending_mode_) {
+  if ((pending_fields_ & PENDING_POWER) != 0) {
+    if (is_on == pending_power_ || !settling) {
+      this->mode = new_mode;
+      pending_fields_ &= ~PENDING_POWER;
+    } else {
+      ESP_LOGD(TAG, "ignoring stale power while command settles");
+    }
+  } else if ((pending_fields_ & PENDING_MODE) == 0 || new_mode == pending_mode_) {
     this->mode = new_mode;
     if (new_mode == pending_mode_)
       pending_fields_ &= ~PENDING_MODE;

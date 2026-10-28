@@ -30,6 +30,8 @@ class RcEx3Climate : public climate::Climate, public uart::UARTDevice, public Po
   void loop() override;
   void update() override;
   void control(const climate::ClimateCall &call) override;
+  // Change only power; the wall controller retains its operating settings.
+  void set_power(bool on);
   climate::ClimateTraits traits() override;
 
   float get_setup_priority() const override { return setup_priority::DATA; }
@@ -85,6 +87,7 @@ class RcEx3Climate : public climate::Climate, public uart::UARTDevice, public Po
     PENDING_MODE        = 1 << 0,
     PENDING_TEMPERATURE = 1 << 1,
     PENDING_FAN         = 1 << 2,
+    PENDING_POWER       = 1 << 3,
   };
 
   static const uint32_t COMMAND_SETTLE_MS = 750;  // measured stale reply arrives in ~30-60 ms
@@ -93,6 +96,10 @@ class RcEx3Climate : public climate::Climate, public uart::UARTDevice, public Po
   climate::ClimateMode pending_mode_{climate::CLIMATE_MODE_OFF};
   float pending_temperature_{NAN};
   uint8_t pending_fan_wire_{0xFF};
+  bool pending_power_{false};
+  // Display only: never replay this value in a power-only command. OFF means
+  // that no valid operating mode has been observed/requested since startup.
+  climate::ClimateMode display_operating_mode_{climate::CLIMATE_MODE_OFF};
 
   sensor::Sensor *indoor_temperature_sensor_    {nullptr};
   sensor::Sensor *outdoor_temperature_sensor_   {nullptr};
