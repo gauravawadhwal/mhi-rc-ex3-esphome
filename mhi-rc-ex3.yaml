@@ -39,6 +39,12 @@ logger:
 api:
   encryption:
     key: !secret api_encryption_key
+  actions:
+    - action: ac_set_power
+      variables:
+        power: bool
+      then:
+        - lambda: id(living_room_ac).set_power(power);
 
 # ── OTA ──────────────────────────────────────────────────────────────────────
 ota:
@@ -50,13 +56,14 @@ time:
   - platform: homeassistant
     id: ha_time
 
-# ── External component (fetched from GitHub at compile time) ─────────────────
+# ── External component (local rollout revision) ─────────────────────────────
+# Source revision: 4b380d604fdc6c582bd747205529fabe68a94d12
+# This revision is local and has not been published. Build from this checkout;
+# do not use the previous remote pin, which lacks set_power().
 external_components:
   - source:
-      type: git
-      url: https://github.com/hump-coder/mhi-rc-ex3-esphome.git
-      ref: 42202f35d22884d225c6558aec50df9222326830
-    refresh: 0s
+      type: local
+      path: components
     components: [rc_ex3]
 
 # ── UART to RC-EX3 panel ─────────────────────────────────────────────────────
@@ -72,6 +79,7 @@ uart:
 # ── Climate entity ────────────────────────────────────────────────────────────
 climate:
   - platform: rc_ex3
+    id: living_room_ac
     name: "Living Room AC"
     uart_id: rc_ex3_uart
     update_interval: 5min   # status poll cadence

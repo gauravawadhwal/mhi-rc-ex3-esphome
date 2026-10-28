@@ -4,6 +4,36 @@ Native ESPHome firmware for an **ESP32** that bridges a **Mitsubishi Heavy Indus
 
 Based on the reverse-engineering work from [mcchas/rc-ex3-esp](https://github.com/mcchas/rc-ex3-esp) and [hump-coder/mhi-rc-ex3-esp32](https://github.com/hump-coder/mhi-rc-ex3-esp32) (Arduino + MQTT predecessor). This project replaces that stack with ESPHome's native HA API.
 
+## Power-only action (local development revision)
+
+`RcEx3Climate::set_power(bool)` changes only the controller's power field.
+Mode, temperature and fan fields are sent as `FF` (unchanged). The example
+exposes this as the ESPHome API action `ac_set_power`, taking `power: true`
+or `power: false`. Discover its node-prefixed action name in Home Assistant.
+The controller retains the operating settings; a cached mode is never sent
+by this action. The bridge keeps an operating mode solely for optimistic
+display and reconciles it with controller status.
+
+This does **not** automatically change HA's standard climate.turn_on behavior.
+Routing that service to this action requires an HA-side integration change.
+Explicit climate mode selection continues to set power and mode normally.
+
+The development example now loads `components/` from this checkout. Its
+source revision is documented beside that source block; the old remote pin
+was removed because it has no power-only method. This revision has not been
+published. Use a matching published commit pin when distributing it later.
+
+Run protocol/state tests without hardware:
+
+```sh
+clang++ -std=c++17 -I tests/stubs tests/test_power.cpp -o /tmp/rc-ex3-test-power
+/tmp/rc-ex3-test-power
+```
+
+The harness compiles the actual component against minimal ESPHome boundary
+stubs. Firmware compilation and physical controller verification remain
+separate checks.
+
 ---
 
 ## Compatible devices
