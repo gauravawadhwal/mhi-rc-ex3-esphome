@@ -1,0 +1,9 @@
+{
+  "domain": "rc_ex3_power",
+  "name": "RC-EX3 Power Control",
+  "version": "0.1.0",
+  "documentation": "https://github.com/gauravawadhwal/mhi-rc-ex3-esphome",
+  "dependencies": ["climate", "esphome"],
+  "codeowners": [],
+  "iot_class": "local_push"
+}

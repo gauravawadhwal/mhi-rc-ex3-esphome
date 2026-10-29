@@ -17,6 +17,9 @@ display and reconciles it with controller status.
 This does **not** automatically change HA's standard climate.turn_on behavior.
 Routing that service to this action requires an HA-side integration change.
 Explicit climate mode selection continues to set power and mode normally.
+An optional [Home Assistant companion](home-assistant/README.md) supplies that
+routing for selected existing entities; it uses runtime overrides and requires
+compatibility testing when HA changes.
 
 The development example now loads `components/` from this checkout. Its
 source revision is documented beside that source block; the old remote pin

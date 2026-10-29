@@ -2,6 +2,48 @@
 
 Target repository: <https://github.com/hump-coder/mhi-rc-ex3-esphome>
 
+## Future work: standard ESPHome climate power control
+
+Recorded 29 October 2026 for later consideration; no upstream issue or PR is
+being opened as part of the Office rollout.
+
+HA's base climate implementation supplies a documented fallback for turn-on:
+select a supported operating mode (normally HEAT_COOL, then HEAT, then COOL).
+The HA ESPHome climate integration inherits it. This is permitted HA behavior,
+not a standards violation or a Heat default implemented by the MHI author.
+HA also supports device-specific on/off implementations, and recommends them
+when the device has independent power control.
+
+The capability gap is that ESPHome's standard climate command API has no
+independent power field. The borrowed MHI project supplies firmware, not HA
+integration code. Merely adding a C++ power method cannot cause stock HA to
+discover and call it automatically.
+
+Two separate contribution candidates:
+
+1. MHI component: contribute the tested `set_power(bool)` method and example
+   API action. It sends only the RC-EX3 power field, with all setting fields
+   left unchanged. Keep this scoped to the device protocol and its tests.
+2. ESPHome/HA: discuss a standard optional climate power capability with
+   maintainers before implementation. It would need ESPHome climate/API support,
+   the aioesphomeapi client, and HA's ESPHome climate on/off implementation.
+   Devices advertising that capability could use native power commands; older
+   firmware and devices without it must retain compatible behavior. Explicit
+   mode selection must continue to mean an explicit mode change.
+
+The local HA companion in `home-assistant/` uses targeted runtime overrides.
+It is a workaround, not the proposed upstream architecture. A native solution
+would allow that companion to be retired without changing existing entity IDs,
+Google Home names or callers of climate.toggle. No HA last-mode helper should
+be needed for devices that retain their operating settings themselves.
+
+References checked during investigation:
+
+- [HA climate method contract](https://contributors.home-assistant.io/core/entities/climate/#methods)
+- [HA ESPHome climate integration](https://github.com/home-assistant/core/blob/dev/homeassistant/components/esphome/climate.py)
+- [ESPHome climate command protocol](https://github.com/esphome/esphome/blob/dev/esphome/components/api/api.proto)
+- [KNX native power example](https://github.com/home-assistant/core/blob/dev/homeassistant/components/knx/climate.py)
+
 ## Recommendation
 
 Contribute the work as two sequential pull requests:
