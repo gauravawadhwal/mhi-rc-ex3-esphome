@@ -4,7 +4,7 @@ Native ESPHome firmware for an **ESP32** that bridges a **Mitsubishi Heavy Indus
 
 Based on the reverse-engineering work from [mcchas/rc-ex3-esp](https://github.com/mcchas/rc-ex3-esp) and [hump-coder/mhi-rc-ex3-esp32](https://github.com/hump-coder/mhi-rc-ex3-esp32) (Arduino + MQTT predecessor). This project replaces that stack with ESPHome's native HA API.
 
-## Power-only action (local development revision)
+## Power-only control
 
 `RcEx3Climate::set_power(bool)` changes only the controller's power field.
 Mode, temperature and fan fields are sent as `FF` (unchanged). The example
@@ -21,10 +21,11 @@ An optional [Home Assistant companion](home-assistant/README.md) supplies that
 routing for selected existing entities; it uses runtime overrides and requires
 compatibility testing when HA changes.
 
-The development example now loads `components/` from this checkout. Its
-source revision is documented beside that source block; the old remote pin
-was removed because it has no power-only method. This revision has not been
-published. Use a matching published commit pin when distributing it later.
+The example pins the component revision containing `set_power()` from this
+fork. The firmware and optional HA companion are reusable across controllers;
+each device exposes its own node-prefixed power action. Add one explicit HA
+mapping per climate entity. Private installation YAML and credentials are not
+part of this repository.
 
 Run protocol/state tests without hardware:
 

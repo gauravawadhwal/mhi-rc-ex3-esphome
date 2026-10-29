@@ -5,7 +5,7 @@ Target repository: <https://github.com/hump-coder/mhi-rc-ex3-esphome>
 ## Future work: standard ESPHome climate power control
 
 Recorded 29 October 2026 for later consideration; no upstream issue or PR is
-being opened as part of the Office rollout.
+being opened as part of this rollout.
 
 HA's base climate implementation supplies a documented fallback for turn-on:
 select a supported operating mode (normally HEAT_COOL, then HEAT, then COOL).

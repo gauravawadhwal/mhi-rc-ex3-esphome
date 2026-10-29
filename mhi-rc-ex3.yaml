@@ -56,14 +56,13 @@ time:
   - platform: homeassistant
     id: ha_time
 
-# ── External component (local rollout revision) ─────────────────────────────
-# Source revision: 4b380d604fdc6c582bd747205529fabe68a94d12
-# This revision is local and has not been published. Build from this checkout;
-# do not use the previous remote pin, which lacks set_power().
+# ── External component (pinned power-only implementation) ───────────────────
 external_components:
   - source:
-      type: local
-      path: components
+      type: git
+      url: https://github.com/gauravawadhwal/mhi-rc-ex3-esphome.git
+      ref: 4b380d604fdc6c582bd747205529fabe68a94d12
+    refresh: 0s
     components: [rc_ex3]
 
 # ── UART to RC-EX3 panel ─────────────────────────────────────────────────────

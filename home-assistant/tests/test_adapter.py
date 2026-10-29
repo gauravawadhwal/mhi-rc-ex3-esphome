@@ -16,9 +16,9 @@ from homeassistant.helpers import entity_registry, device_registry, area_registr
 from homeassistant.components.climate.services import async_setup_services
 from custom_components.rc_ex3_power import async_setup, DOMAIN, CONFIG_SCHEMA
 
-ID='climate.office_ac'
-ACTION='mhi_rc_ex3_office_ac_set_power'
-MAPPING={'entity_id':ID,'config_entry_id':'office_entry','device_id':'office_device','action':ACTION}
+ID='climate.example_ac'
+ACTION='mhi_rc_ex3_example_ac_set_power'
+MAPPING={'entity_id':ID,'config_entry_id':'example_entry','device_id':'example_device','action':ACTION}
 
 @pytest_asyncio.fixture
 async def rig(tmp_path):
@@ -32,15 +32,15 @@ async def rig(tmp_path):
     component=EntityComponent(logging.getLogger(__name__),'climate',hass)
     hass.data[DATA_COMPONENT]=component
     async_setup_services(hass)
-    registry=SimpleNamespace(async_get=lambda entity_id:SimpleNamespace(platform='esphome',config_entry_id='office_entry',device_id='office_device'))
+    registry=SimpleNamespace(async_get=lambda entity_id:SimpleNamespace(platform='esphome',config_entry_id='example_entry',device_id='example_device'))
     def make():
         data=MagicMock()
-        data.device_info=DeviceInfo(name='office',mac_address='02:00:00:00:00:01')
+        data.device_info=DeviceInfo(name='example',mac_address='02:00:00:00:00:01')
         data.api_version=APIVersion(1,13)
         data.available=True
         data.state=defaultdict(dict)
         data.client.climate_command=MagicMock()
-        info=ClimateInfo(key=1,name='Office AC',supported_modes=[ClimateMode.OFF,ClimateMode.COOL,ClimateMode.HEAT],visual_min_temperature=16,visual_max_temperature=30,visual_target_temperature_step=.5)
+        info=ClimateInfo(key=1,name='Example AC',supported_modes=[ClimateMode.OFF,ClimateMode.COOL,ClimateMode.HEAT],visual_min_temperature=16,visual_max_temperature=30,visual_target_temperature_step=.5)
         e=EsphomeClimateEntity(data,info,ClimateState)
         e.entity_id=ID;e.hass=hass
         e._attr_device_info=None
